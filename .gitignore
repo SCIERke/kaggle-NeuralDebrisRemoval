@@ -1,0 +1,12 @@
+tmp
+.venv
+
+**/__pycache__/
+
+cred
+output/*
+
+poisoned_model
+unlearn_set
+
+.DS_Store

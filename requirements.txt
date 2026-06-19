@@ -1,0 +1,19 @@
+# detectron2 must be built from source (no pre-built wheel for M1/CPU):
+#   torch + torchvision installed first via Makefile to satisfy detectron2 build
+
+# Data & vision
+numpy>=1.24.0
+opencv-python>=4.7.0
+Pillow>=9.5.0
+
+# Annotation handling
+pycocotools>=2.0.6
+
+# Utilities
+pandas>=2.0.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+scipy>=1.11.0
+tqdm
+dotenv
+pathlib
