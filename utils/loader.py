@@ -42,7 +42,7 @@ def build_cfg(
     cfg.MODEL.RETINANET.SCORE_THRESH_TEST = score_thresh
     cfg.MODEL.ANCHOR_GENERATOR.ASPECT_RATIOS = [ANCHOR_ASPECT_RATIOS]
     cfg.MODEL.ANCHOR_GENERATOR.SIZES = ANCHOR_SIZES
-    cfg.MODEL.DEVICE = "cpu"
+    cfg.MODEL.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     cfg.DATASETS.TRAIN = (dataset_name,)
     cfg.DATASETS.TEST = ()
