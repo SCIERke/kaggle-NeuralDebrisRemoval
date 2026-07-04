@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     poisoned_model_path: str = "poisoned_model/poisoned_model.pth"
     unlearn_set_path: str = "unlearn_set/"
     test_set_path: str = "test/"
+    best_k_path: str = "/kaggle/working/best_prune_k.json"
 
     # ---- Model Architecture ----
     base_config: str = "COCO-Detection/retinanet_R_50_FPN_3x.yaml"
@@ -55,6 +56,7 @@ KAGGLE_CRED_PATH     = settings.kaggle_cred_path
 POISONED_MODEL_PATH  = settings.poisoned_model_path
 UNLEARN_SET_PATH     = settings.unlearn_set_path
 TEST_SET_PATH        = settings.test_set_path
+BEST_K_PATH          = settings.best_k_path
 BASE_CONFIG          = settings.base_config
 ANCHOR_ASPECT_RATIOS = settings.anchor_aspect_ratios
 ANCHOR_SIZES         = settings.anchor_sizes

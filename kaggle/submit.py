@@ -5,6 +5,7 @@ See kaggle/README.md for the full run-on-Kaggle instructions (upload, path
 setup, detectron2 install, and the recommended pre-submission k sweep).
 """
 
+import json
 import os
 import sys
 import csv
@@ -22,7 +23,7 @@ else:
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from config.config import settings, UNLEARN_SET_PATH, TEST_SET_PATH
+from config.config import settings, UNLEARN_SET_PATH, TEST_SET_PATH, BEST_K_PATH
 
 try:
     settings.validate_paths()
@@ -39,6 +40,8 @@ from helpers.diagnostics import sample_images, detection_stats
 from approach.optimal_grow_prune import (
     optimal_top_grow_indexes_kmean,
     optimal_top_grow_indexes_kfrequency,
+    top_grow_indexes_kmean,
+    top_grow_indexes_kfrequency,
     inference_model_with_grow_indexes,
     inject_channel_prune_hook,
     eval as unlearn_eval,
@@ -92,20 +95,37 @@ def write_submission(predictions: dict[int, str], out_path: str) -> None:
     print(f"Submission written → {out_path}  ({len(sorted_ids)} rows)")
 
 
-# ── Step 1: pick the better optimizer (kmean vs kfreq) ──────────────────────
+# ── Step 1: pick prune channels — use the sweep's answer if one exists,
+#    otherwise fall back to the gradient-based optimizer. ────────────────────
 
-print("=== Finding optimal prune channels ===")
+print("=== Finding prune channels ===")
 
-kmean_indices = optimal_top_grow_indexes_kmean()
-kmean_score   = unlearn_eval(inference_model_with_grow_indexes(kmean_indices.tolist()))
-print(f"KMean   unlearn score: {kmean_score:.2f}")
+if Path(BEST_K_PATH).is_file():
+    with open(BEST_K_PATH) as f:
+        best = json.load(f)["best"]
+    best_label = best["method"]
+    k = best["k"]
+    print(f"Found sweep result at {BEST_K_PATH}: method={best_label}  k={k}  "
+          f"unlearn_silence={best['unlearn_silence']:.2%}  "
+          f"retention={best['retention_vs_baseline']:.2%}")
+    ranker = top_grow_indexes_kmean if best_label == "kmean" else top_grow_indexes_kfrequency
+    best_indices = ranker(k)
+else:
+    print(f"No sweep result found at {BEST_K_PATH} — run approach/sweep_prune_k.py "
+          f"first to pick k without spending a submission. Falling back to the "
+          f"gradient-based optimizer for now.\n")
 
-kfreq_indices = optimal_top_grow_indexes_kfrequency()
-kfreq_score   = unlearn_eval(inference_model_with_grow_indexes(kfreq_indices.tolist()))
-print(f"KFreq   unlearn score: {kfreq_score:.2f}")
+    kmean_indices = optimal_top_grow_indexes_kmean()
+    kmean_score   = unlearn_eval(inference_model_with_grow_indexes(kmean_indices.tolist()))
+    print(f"KMean   unlearn score: {kmean_score:.2f}")
 
-best_indices = kmean_indices if kmean_score >= kfreq_score else kfreq_indices
-best_label   = "kmean" if kmean_score >= kfreq_score else "kfreq"
+    kfreq_indices = optimal_top_grow_indexes_kfrequency()
+    kfreq_score   = unlearn_eval(inference_model_with_grow_indexes(kfreq_indices.tolist()))
+    print(f"KFreq   unlearn score: {kfreq_score:.2f}")
+
+    best_indices = kmean_indices if kmean_score >= kfreq_score else kfreq_indices
+    best_label   = "kmean" if kmean_score >= kfreq_score else "kfreq"
+
 print(f"\nUsing {best_label} channels for submission")
 
 # ── Step 1.5: sanity-check the chosen channels against real (unlabeled) test

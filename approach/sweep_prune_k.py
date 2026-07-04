@@ -25,9 +25,11 @@ one candidate against the real leaderboard.
 See kaggle/README.md for how to run this on Kaggle (same setup as submit.py).
 """
 
+import json
 import sys
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import torch
 
 if "__file__" in globals():
@@ -37,7 +39,7 @@ else:
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from config.config import UNLEARN_SET_PATH, TEST_SET_PATH
+from config.config import UNLEARN_SET_PATH, TEST_SET_PATH, BEST_K_PATH
 from utils.loader import build_cfg, build_predictor
 from helpers.get_score_matrix import get_score_matrix
 from helpers.diagnostics import sample_images, detection_stats, unlearn_silence
@@ -46,6 +48,35 @@ from approach.optimal_grow_prune import inject_channel_prune_hook
 LAYER_IDX = 6
 N_TEST_SAMPLE = 100
 K_VALUES = [8, 16, 32, 48, 64, 96, 128, 160, 192, 224]
+
+
+def pick_best(rows: list[dict]) -> dict:
+    """Pick the (method, k) that maximizes the worse of the two goals — debris
+    silenced (unlearn_silence) and normal detection preserved
+    (retention_vs_baseline) — tie-broken toward the smallest k (least
+    aggressive pruning that still gets the job done)."""
+
+    def score(r: dict) -> float:
+        return min(r["unlearn_silence"], r["retention_vs_baseline"])
+
+    return max(rows, key=lambda r: (score(r), -r["k"]))
+
+
+def plot_sweep(rows: list[dict]) -> None:
+    """One subplot per metric, one line per method, k on the x-axis."""
+    metrics = ["unlearn_silence", "test_detect_rate", "retention_vs_baseline", "test_mean_conf"]
+    methods = sorted({r["method"] for r in rows})
+
+    fig, axes = plt.subplots(1, len(metrics), figsize=(5 * len(metrics), 4))
+    for ax, metric in zip(axes, metrics):
+        for method in methods:
+            method_rows = sorted((r for r in rows if r["method"] == method), key=lambda r: r["k"])
+            ax.plot([r["k"] for r in method_rows], [r[metric] for r in method_rows], marker="o", label=method)
+        ax.set_xlabel("k (channels pruned)")
+        ax.set_title(metric)
+        ax.legend()
+    fig.tight_layout()
+    plt.show()
 
 
 def run_sweep(
@@ -111,6 +142,18 @@ def run_sweep(
             f"{r['test_detect_rate']:>17.2%} {r['retention_vs_baseline']:>11.2%} "
             f"{r['test_mean_conf']:>15.3f}"
         )
+
+    plot_sweep(rows)
+
+    best = pick_best(rows)
+    print(f"\nBest pick: method={best['method']}  k={best['k']}  "
+          f"unlearn_silence={best['unlearn_silence']:.2%}  "
+          f"retention={best['retention_vs_baseline']:.2%}")
+
+    Path(BEST_K_PATH).parent.mkdir(parents=True, exist_ok=True)
+    with open(BEST_K_PATH, "w") as f:
+        json.dump({"best": best, "all_rows": rows}, f, indent=2)
+    print(f"Wrote best pick to {BEST_K_PATH} — submit.py will use it automatically.")
 
     return rows
 
