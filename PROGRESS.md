@@ -63,6 +63,58 @@ Diagnostic question: **is the poison localized to a few channels or distributed?
   for a "detector" but fine pre-cls_score — cls_score weights can be negative, so a channel
   going low can still drive a high "object" logit. Extreme+consistent matters, not the sign.
 
+## Checklist — approaches tried & findings (updated 2026-07-05)
+
+*(Supersedes the "NEXT STEP" section below, which was written before the
+findings here — kept for history, not for current direction.)*
+
+**Done, with confirmed findings:**
+
+- [x] **Localize the poison** (`visualization/channel_diagnoise.py`) — inside-vs-outside
+      activation scoring on `cls_subnet[6]`. **Found:** poison IS localized to a
+      minority of channels (top-10 all negative, consistent across all 20 images) →
+      pruning is viable, not just a distributed effect.
+- [x] **Local k-sweep, no submission cost** (`approach/sweep_prune_k.py`) — swept
+      k=8..224 for both kmean/kfreq channel rankings; measured unlearn-silence vs.
+      real test-image detection retention for each. **Found:** smooth trade-off with
+      no k giving both — best compromise only ~65% silence / ~62% retention
+      (kfreq, k=48). Auto-picks best k and writes it to `best_prune_k.json`.
+- [x] **Diagnose *why* no good k exists** (`approach/diagnose_channel_overlap.py`) —
+      checked overlap between "channels that fire on poison" and "channels that fire
+      on real detections". **Found: ~87% overlap** — poison and real detection share
+      most of the same circuitry. This is *why* the sweep has no clean winner: a
+      static per-channel mask structurally cannot separate them.
+- [x] **Prune + fine-tune to recover** (`approach/prune_and_finetune.py`) — the
+      Fine-Pruning paper's full two-step recipe (prune, then fine-tune the surviving
+      weights), which the original gradient-based optimizer never did (prune-only).
+      Fine-tunes `cls_subnet[6]` with unlearn loss (poison) + retain loss
+      (self-distillation vs. the original model on real test images). **Built, not
+      yet run on real data.**
+- [x] **Confirmed test_set contains poisoned-class examples, not just clean** — the
+      competition's own aCADD formula scores against "the ground truth object class
+      (clean or poisoned streak)", proving the test set mixes both. This means
+      treating every sampled test image as a trustworthy "preserve this" retain
+      target was a real design flaw.
+- [x] **Flag suspected-poisoned test images** (`approach/detect_poisoned_test_images.py`) —
+      scores each test detection by resemblance to the known poison signature vs. a
+      robust "typical real" reference; flagged images are auto-excluded from
+      `prune_and_finetune.py`'s retain sample. **Built, not yet run on real data.**
+
+**Not done yet / open:**
+
+- [ ] Run `scan_test_set()` on real Kaggle data — see how many images get flagged,
+      sanity-check the flagged list and the distribution plot look reasonable.
+- [ ] Run `prune_and_finetune()` on real data — check the before/after retention
+      numbers actually improve over prune-only.
+- [ ] Check the competition's **Data** tab (not Rules/Overview) for any explicit
+      statement of test_set poison ratio, if given.
+- [ ] Consider folding flagged images into the **unlearn loss** too, not just
+      excluding them from retain — bigger potential win (more unlearning signal
+      than just the 20 given examples), but riskier if the scanner has false
+      positives (would train the model to suppress real detections).
+- [ ] Submit and get a real maCADD score — nothing has been submitted yet since the
+      original 0-row/collapse bug.
+
 ## NEXT STEP (pruning phase — start fresh session, NOT learning mode)
 1. Pick the prune set: threshold on |mean_score| (e.g. |score| > 2.0) or top-k. Start with
    the ~10 listed, consider widening to the full negative tail seen in the heatmap.
