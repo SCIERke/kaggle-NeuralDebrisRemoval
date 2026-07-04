@@ -106,13 +106,42 @@ images (no ground truth needed — just "did it detect something and
 where"), then reports the overlap between the two top-k channel sets:
 
 - **High overlap** → poison and real detections use the same circuitry.
-  Static channel pruning has a structural ceiling here regardless of the
-  ranking formula — consider a different approach (e.g. the baseline
-  empty-label finetune, or input-dependent suppression instead of a fixed
-  per-channel mask).
+  Static channel pruning *alone* has a structural ceiling here regardless of
+  the ranking formula — see step 5.6 below (prune + fine-tune) instead of
+  trying to fix the ranking.
 - **Low overlap** → the channels are separable. Re-ranking using
   `(poison activation − real-detection activation)` instead of poison
   activation alone should sharpen the trade-off seen in step 5.
+
+## 5.6. (If step 5.5 showed high overlap) prune, then fine-tune to recover
+
+Static pruning can't cleanly separate shared channels, but the network can
+often recover lost capacity if you prune first and then briefly retrain the
+surviving weights of the same layer — the Fine-Pruning paper's two-step
+recipe, which the earlier gradient-based optimizer never did (it only ever
+prunes, never recovers):
+
+```python
+from approach.prune_and_finetune import prune_and_finetune
+predictor, handle = prune_and_finetune()
+```
+
+With no arguments it loads the `(method, k)` from step 5's sweep result
+automatically. It then fine-tunes only `cls_subnet[6]`'s weights (everything
+else stays frozen) with two loss terms:
+
+- push down detection confidence on the `unlearn_set` (poison) images — the
+  actual unlearning signal
+- keep detection confidence on real test images close to what the
+  *original, unpruned* model produced there — self-distillation, since we
+  have no ground truth for the test images, but the original model's
+  ordinary (non-triggered) behavior is presumably still correct
+
+It prints a before/after comparison (detect rate + unlearn silence) on the
+same test sample so you can see whether fine-tuning actually recovered
+retention, and saves the resulting weights to
+`settings.finetuned_state_path` (`/kaggle/working/finetuned_cls_subnet6.pth`
+by default).
 
 ## 6. Run the submission script
 
