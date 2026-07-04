@@ -4,11 +4,17 @@ from pathlib import Path
 from utils.loader import load_image
 
 
-def sample_images(image_dir: str, n: int, seed: int = 42) -> list[Path]:
-    """Deterministically sample up to n image paths from image_dir (searched recursively)."""
+def sample_images(image_dir: str, n: int, seed: int = 42, exclude_ids: set[int] | None = None) -> list[Path]:
+    """Deterministically sample up to n image paths from image_dir (searched recursively).
+
+    exclude_ids filters by int(path.stem) before sampling — e.g. to keep
+    suspected-poisoned test images (see approach/detect_poisoned_test_images.py)
+    out of a "retain" reference sample."""
     all_paths = sorted(Path(image_dir).rglob("*.png"))
+    if exclude_ids:
+        all_paths = [p for p in all_paths if int(p.stem) not in exclude_ids]
     if not all_paths:
-        raise FileNotFoundError(f"No .png files found under {image_dir}")
+        raise FileNotFoundError(f"No .png files found under {image_dir} (after exclusions)")
     rng = random.Random(seed)
     return sorted(rng.sample(all_paths, min(n, len(all_paths))))
 

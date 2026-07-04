@@ -44,10 +44,17 @@ N_TEST_SAMPLE = 100
 K_VALUES = [8, 16, 32, 48, 64, 96, 128]
 
 
-def real_detection_score_matrix(predictor, model, image_paths: list[Path], layer_idx: int = LAYER_IDX) -> torch.Tensor:
+def real_detection_score_matrix(
+    predictor, model, image_paths: list[Path], layer_idx: int = LAYER_IDX, return_paths: bool = False
+):
     """Same inside-vs-outside per-channel scoring as get_score_matrix(), but
     using the model's own top predicted box on real test images instead of
-    the poison annotation. Images with zero detections are skipped."""
+    the poison annotation. Images with zero detections are skipped.
+
+    return_paths=True also returns the subset of image_paths that had a
+    detection, aligned row-for-row with the returned score matrix — needed
+    to attribute a score back to a specific image (e.g. for flagging
+    suspected-poisoned test images)."""
     activations = []
 
     def hook(module, inp, out):
@@ -55,6 +62,7 @@ def real_detection_score_matrix(predictor, model, image_paths: list[Path], layer
 
     handle = model.head.cls_subnet[layer_idx].register_forward_hook(hook)
     scores = []
+    used_paths = []
     try:
         for path in image_paths:
             activations.clear()
@@ -77,6 +85,7 @@ def real_detection_score_matrix(predictor, model, image_paths: list[Path], layer
             outside_mean = (all_sum - inside_sum) / diff_count
             inside_mean = inside.mean(dim=(1, 2))
             scores.append(inside_mean - outside_mean)
+            used_paths.append(path)
     finally:
         handle.remove()
 
@@ -85,7 +94,10 @@ def real_detection_score_matrix(predictor, model, image_paths: list[Path], layer
             "No detections found on any sampled test image — can't compute "
             "the real-detection score matrix. Try a larger sample size."
         )
-    return torch.stack(scores, dim=0)
+    score_matrix = torch.stack(scores, dim=0)
+    if return_paths:
+        return score_matrix, used_paths
+    return score_matrix
 
 
 def channel_overlap(poison_ranking: torch.Tensor, real_ranking: torch.Tensor, k: int) -> tuple[float, list[int]]:

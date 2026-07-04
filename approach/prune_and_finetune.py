@@ -40,7 +40,7 @@ else:
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from config.config import UNLEARN_SET_PATH, TEST_SET_PATH, BEST_K_PATH, FINETUNED_STATE_PATH
+from config.config import UNLEARN_SET_PATH, TEST_SET_PATH, BEST_K_PATH, FINETUNED_STATE_PATH, SUSPECTED_POISON_PATH
 from utils.loader import build_cfg, build_predictor
 from helpers.diagnostics import sample_images, detection_stats, unlearn_silence
 from approach.optimal_grow_prune import (
@@ -56,6 +56,20 @@ N_VALIDATION_SAMPLE = 100
 EPOCHS = 30
 LR = 1e-4
 LAMBDA_RETAIN = 1.0
+
+
+def _load_suspected_poison_ids() -> set[int]:
+    """Test images flagged by approach/detect_poisoned_test_images.py — excluded
+    from the retain sample so we don't train the model to preserve the backdoor
+    on images that are themselves poisoned-class ground truth (see that
+    script's docstring for why the test set likely contains such images)."""
+    if not Path(SUSPECTED_POISON_PATH).is_file():
+        return set()
+    with open(SUSPECTED_POISON_PATH) as f:
+        flagged = json.load(f)["flagged_image_ids"]
+    print(f"Excluding {len(flagged)} suspected-poisoned test images from the retain set "
+          f"(loaded from {SUSPECTED_POISON_PATH})")
+    return set(flagged)
 
 
 def _load_grow_indexes_from_sweep() -> list[int]:
@@ -101,11 +115,13 @@ def prune_and_finetune(
     for p in ref_model.parameters():
         p.requires_grad_(False)
 
+    flagged_ids = _load_suspected_poison_ids()
+
     unlearn_paths = sorted(Path(UNLEARN_SET_PATH).glob("*.png"))
-    retain_paths = sample_images(TEST_SET_PATH, n_retain_sample)
+    retain_paths = sample_images(TEST_SET_PATH, n_retain_sample, exclude_ids=flagged_ids)
 
     print(f"=== Baseline (before fine-tuning) on a {N_VALIDATION_SAMPLE}-image test sample ===")
-    validation_sample = sample_images(TEST_SET_PATH, N_VALIDATION_SAMPLE)
+    validation_sample = sample_images(TEST_SET_PATH, N_VALIDATION_SAMPLE, exclude_ids=flagged_ids)
     before_stats = detection_stats(predictor, validation_sample)
     before_silence = unlearn_silence(predictor, UNLEARN_SET_PATH)
     print(f"  detect_rate={before_stats['detect_rate']:.2%}  "

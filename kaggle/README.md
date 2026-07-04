@@ -113,6 +113,29 @@ where"), then reports the overlap between the two top-k channel sets:
   `(poison activation − real-detection activation)` instead of poison
   activation alone should sharpen the trade-off seen in step 5.
 
+## 5.55. Flag test images that are themselves poisoned-class ground truth
+
+The competition's own aCADD formula scores detections against "the ground
+truth object class (**clean or poisoned streak**)" — meaning the test set
+almost certainly contains poisoned-streak examples too, not just clean ones.
+Any retain/distillation step that treats every sampled test image uniformly
+as "preserve this behavior" risks training the model to keep the backdoor
+active on exactly the images used to check whether it was removed. Run this
+before step 5.6:
+
+```python
+from approach.detect_poisoned_test_images import scan_test_set
+flagged_ids, real_projections, poison_projections = scan_test_set()
+```
+
+It scores each scanned test image's detection by how closely its channel
+activation pattern resembles the 20 known `unlearn_set` poison examples
+(vs. a robust "typical real" reference), plots the two distributions
+overlaid, and writes flagged image ids to
+`settings.suspected_poison_path` (`/kaggle/working/suspected_poison_test_images.json`
+by default). No ground truth needed — only the poison box locations and the
+model's own predicted boxes.
+
 ## 5.6. (If step 5.5 showed high overlap) prune, then fine-tune to recover
 
 Static pruning can't cleanly separate shared channels, but the network can
@@ -136,6 +159,9 @@ else stays frozen) with two loss terms:
   *original, unpruned* model produced there — self-distillation, since we
   have no ground truth for the test images, but the original model's
   ordinary (non-triggered) behavior is presumably still correct
+
+If step 5.55 wrote a `suspected_poison_test_images.json`, its flagged images
+are automatically excluded from the retain sample here.
 
 It prints a before/after comparison (detect rate + unlearn silence) on the
 same test sample so you can see whether fine-tuning actually recovered

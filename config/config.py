@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     test_set_path: str = "test/"
     best_k_path: str = "/kaggle/working/best_prune_k.json"
     finetuned_state_path: str = "/kaggle/working/finetuned_cls_subnet6.pth"
+    suspected_poison_path: str = "/kaggle/working/suspected_poison_test_images.json"
 
     # ---- Model Architecture ----
     base_config: str = "COCO-Detection/retinanet_R_50_FPN_3x.yaml"
@@ -59,6 +60,7 @@ UNLEARN_SET_PATH     = settings.unlearn_set_path
 TEST_SET_PATH        = settings.test_set_path
 BEST_K_PATH          = settings.best_k_path
 FINETUNED_STATE_PATH = settings.finetuned_state_path
+SUSPECTED_POISON_PATH = settings.suspected_poison_path
 BASE_CONFIG          = settings.base_config
 ANCHOR_ASPECT_RATIOS = settings.anchor_aspect_ratios
 ANCHOR_SIZES         = settings.anchor_sizes
