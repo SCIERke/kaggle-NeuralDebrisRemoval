@@ -1,53 +1,8 @@
 """
 Kaggle submission script for Neural Debris Removal (ESA unlearning competition).
 
----- HOW TO RUN ON KAGGLE ----
-
-1. Upload your code as a Kaggle dataset:
-   kaggle datasets create -p /path/to/Neural_Debris_Removal --dir-mode zip -u
-
-   Or zip manually and upload via:
-   https://www.kaggle.com/datasets/new
-
-2. In your Kaggle notebook, add:
-   - Competition data (poisoned model + unlearn/test sets)
-   - Your code dataset (from step 1)
-
-3. In the first notebook cell, install detectron2:
-
-   import torch, subprocess, sys, urllib.request
-   cuda = torch.version.cuda.replace(".", "")
-   tv   = torch.__version__.split("+")[0]
-   wheel_index = f"https://dl.fbaipublicfiles.com/detectron2/wheels/cu{cuda}/torch{tv}/index.html"
-   try:
-       urllib.request.urlopen(wheel_index, timeout=5)
-       subprocess.check_call([
-           sys.executable, "-m", "pip", "install", "-q", "detectron2",
-           "-f", wheel_index,
-       ])
-   except Exception:
-       # No prebuilt wheel for this CUDA/torch combo — build from source
-       subprocess.check_call([
-           sys.executable, "-m", "pip", "install", "-q",
-           "git+https://github.com/facebookresearch/detectron2.git",
-           "--no-build-isolation",
-       ])
-
-4. Set paths and run this script:
-
-   import os, sys
-   CODE_PATH = "/kaggle/input/<your-code-dataset-slug>"
-   sys.path.insert(0, CODE_PATH)
-
-   # Point to competition input files — adjust slug as needed
-   COMPETITION = "/kaggle/input/<competition-slug>"
-   os.environ["POISONED_MODEL_PATH"] = f"{COMPETITION}/poisoned_model.pth"
-   os.environ["UNLEARN_SET_PATH"]    = f"{COMPETITION}/unlearn_set/"
-   os.environ["TEST_SET_PATH"]       = f"{COMPETITION}/test/"
-
-   exec(open(f"{CODE_PATH}/kaggle/submit.py").read())
-
----- END INSTRUCTIONS ----
+See kaggle/README.md for the full run-on-Kaggle instructions (upload, path
+setup, detectron2 install, and the recommended pre-submission k sweep).
 """
 
 import os

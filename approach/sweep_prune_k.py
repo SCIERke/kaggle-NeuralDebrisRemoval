@@ -22,13 +22,7 @@ Pick the smallest k where unlearn silence is high AND test retention hasn't
 collapsed relative to baseline, then spend a submission only to confirm that
 one candidate against the real leaderboard.
 
----- HOW TO RUN ----
-
-Same setup as kaggle/submit.py (paths + detectron2 install), then:
-
-    exec(open(f"{CODE_PATH}/approach/sweep_prune_k.py").read())
-
----- END ----
+See kaggle/README.md for how to run this on Kaggle (same setup as submit.py).
 """
 
 import sys
