@@ -67,28 +67,44 @@ else:
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from config.config import UNLEARN_SET_PATH, TEST_SET_PATH
+from config.config import settings, UNLEARN_SET_PATH, TEST_SET_PATH
+
+try:
+    settings.validate_paths()
+except ValueError as exc:
+    raise SystemExit(f"Environment validation failed — fix paths before running:\n{exc}") from exc
+
+print("=== Environment validated ===")
+print(f"  POISONED_MODEL_PATH = {settings.poisoned_model_path}")
+print(f"  UNLEARN_SET_PATH    = {settings.unlearn_set_path}")
+print(f"  TEST_SET_PATH       = {settings.test_set_path}")
+print(f"  CUDA available      = {torch.cuda.is_available()}\n")
 from utils.loader import build_cfg, build_predictor, load_image
+from helpers.diagnostics import sample_images, detection_stats
 from approach.optimal_grow_prune import (
     optimal_top_grow_indexes_kmean,
     optimal_top_grow_indexes_kfrequency,
     inference_model_with_grow_indexes,
+    inject_channel_prune_hook,
     eval as unlearn_eval,
 )
 
 OUTPUT_CSV = "/kaggle/working/submission.csv"
+COMPARISON_SAMPLE_SIZE = 200
+MIN_RETENTION = 0.5  # warn if pruned detect_rate drops below this fraction of baseline
 
 
 def predict_all(test_dir: str, prune_indices: list[int]) -> dict[int, str]:
     """Run the pruned model on every image in test_dir, return {image_id: prediction_string}."""
     cfg = build_cfg()
     predictor = build_predictor(cfg)
-
-    from approach.optimal_grow_prune import inject_channel_prune_hook
     inject_channel_prune_hook(predictor.model, layer_idx=6, grow_indexes=prune_indices)
 
+    image_paths = sorted(Path(test_dir).rglob("*.png"))
+    print(f"Found {len(image_paths)} test images under {test_dir}")
+
     results = {}
-    for path in sorted(Path(test_dir).glob("*.png")):
+    for path in image_paths:
         image_id = int(path.stem)
         image    = load_image(str(path))
         output   = predictor(image)
@@ -136,6 +152,44 @@ print(f"KFreq   unlearn score: {kfreq_score:.2f}")
 best_indices = kmean_indices if kmean_score >= kfreq_score else kfreq_indices
 best_label   = "kmean" if kmean_score >= kfreq_score else "kfreq"
 print(f"\nUsing {best_label} channels for submission")
+
+# ── Step 1.5: sanity-check the chosen channels against real (unlabeled) test
+#    images before spending a submission — catches full-model collapse, which
+#    is what a high unlearn score can hide (see approach/sweep_prune_k.py). ──
+
+print("\n=== Comparing normal vs pruned model on a test-set sample ===")
+
+_cfg = build_cfg()
+_predictor = build_predictor(_cfg)
+_sample = sample_images(TEST_SET_PATH, COMPARISON_SAMPLE_SIZE)
+
+baseline_stats = detection_stats(_predictor, _sample)
+print(f"  normal  detect_rate={baseline_stats['detect_rate']:.2%}  "
+      f"mean_conf={baseline_stats['mean_conf']:.3f}  "
+      f"mean_count={baseline_stats['mean_count']:.2f}")
+
+_handle = inject_channel_prune_hook(_predictor.model, layer_idx=6, grow_indexes=best_indices.tolist())
+try:
+    pruned_stats = detection_stats(_predictor, _sample)
+finally:
+    _handle.remove()
+
+retention = (
+    pruned_stats["detect_rate"] / baseline_stats["detect_rate"]
+    if baseline_stats["detect_rate"] > 0 else 0.0
+)
+print(f"  pruned  detect_rate={pruned_stats['detect_rate']:.2%}  "
+      f"mean_conf={pruned_stats['mean_conf']:.3f}  "
+      f"mean_count={pruned_stats['mean_count']:.2f}")
+print(f"  retention vs normal: {retention:.2%}")
+
+if retention < MIN_RETENTION:
+    print(
+        f"\n  WARNING: pruned model retains only {retention:.2%} of the normal "
+        f"model's detection rate on real test images — this looks like model "
+        f"collapse, not targeted unlearning. Consider a smaller k (see "
+        f"approach/sweep_prune_k.py) before submitting.\n"
+    )
 
 # ── Step 2: run pruned model on full test set and write submission ───────────
 
