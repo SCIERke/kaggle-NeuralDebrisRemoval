@@ -76,8 +76,43 @@ rows = run_sweep()
 
 This prints, per candidate `k`: the unlearn-set silence rate (the actual
 unlearning signal) and the test-set detection retention rate vs. the
-unpruned baseline (catches full-model collapse before you submit). Pick the
-smallest `k` where silence is high and retention hasn't dropped.
+unpruned baseline (catches full-model collapse before you submit). It also
+plots each metric against `k` per method, automatically picks the
+`(method, k)` that gets the best trade-off between the two, and writes that
+pick to `settings.best_k_path` (`/kaggle/working/best_prune_k.json` by
+default) — `submit.py` picks this up automatically in the next step, no
+manual copying needed.
+
+If the curves show silence and retention trading off smoothly with no point
+where both are good (no "knee"), that's a sign the poison and real
+detections may be sharing the same channels — see step 5.5 below before
+trying to fix the ranking formula.
+
+## 5.5. (Optional) check whether the poison is even separable
+
+If the sweep in step 5 shows no good `k` — silence going up always costs
+about as much retention — it's worth checking *why* before spending more
+time tuning `k`. This checks whether the channels that respond to the
+poison are the same ones used for real detections:
+
+```python
+from approach.diagnose_channel_overlap import run_diagnosis
+poison_ranking, real_ranking, overlaps = run_diagnosis()
+```
+
+It ranks channels by activation on the poison box (`unlearn_set`) and
+separately by activation on the model's own predicted box on real test
+images (no ground truth needed — just "did it detect something and
+where"), then reports the overlap between the two top-k channel sets:
+
+- **High overlap** → poison and real detections use the same circuitry.
+  Static channel pruning has a structural ceiling here regardless of the
+  ranking formula — consider a different approach (e.g. the baseline
+  empty-label finetune, or input-dependent suppression instead of a fixed
+  per-channel mask).
+- **Low overlap** → the channels are separable. Re-ranking using
+  `(poison activation − real-detection activation)` instead of poison
+  activation alone should sharpen the trade-off seen in step 5.
 
 ## 6. Run the submission script
 
@@ -88,4 +123,6 @@ exec(open(f"{CODE_PATH}/kaggle/submit.py").read())
 `submit.py` validates all required paths up front (fails fast with a clear
 message instead of silently writing an empty `submission.csv`), then prints
 a normal-vs-pruned comparison on a test-set sample before running the full
-test set — watch for the collapse warning there too.
+test set — watch for the collapse warning there too. If step 5 already
+wrote a `best_prune_k.json`, it's used directly (no gradient-based
+optimizer re-run); otherwise it falls back to that optimizer automatically.
