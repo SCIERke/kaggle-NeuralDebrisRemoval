@@ -55,10 +55,15 @@ CODE_PATH = "/kaggle/input/<your-code-dataset-slug>"
 sys.path.insert(0, CODE_PATH)
 
 COMPETITION = "/kaggle/input/<competition-slug>"
-os.environ["POISONED_MODEL_PATH"] = f"{COMPETITION}/poisoned_model.pth"
-os.environ["UNLEARN_SET_PATH"]    = f"{COMPETITION}/unlearn_set/"
-os.environ["TEST_SET_PATH"]       = f"{COMPETITION}/test_set/"
+os.environ["POISONED_MODEL_PATH"]    = f"{COMPETITION}/poisoned_model.pth"
+os.environ["UNLEARN_SET_PATH"]       = f"{COMPETITION}/unlearn_set/"
+os.environ["TEST_SET_PATH"]          = f"{COMPETITION}/test_set/"
+os.environ["SAMPLE_SUBMISSION_PATH"] = f"{COMPETITION}/sample_submission.csv"
 ```
+
+`SAMPLE_SUBMISSION_PATH` defaults to a relative `sample_submission.csv`,
+which only exists locally — forgetting to set it here fails fast now
+(`settings.validate_paths()` checks it), but it's an easy one to miss.
 
 Every value in `config/config.py` is injectable this way (not just these
 three) — see `Settings` in that file for the full list.

@@ -7,7 +7,7 @@ STAGE_DIR  := .kaggle_upload
 # stage a clean copy first to keep secrets (cred/), .git, and .venv out of the dataset.
 UPLOAD_EXCLUDES := --exclude=.git --exclude=.venv --exclude=cred --exclude=tmp \
 	--exclude=__pycache__ --exclude=.DS_Store --exclude='*.zip' --exclude=$(STAGE_DIR) \
-	--exclude=ndr-trial1.ipynb
+	--exclude=ndr-trial1.ipynb --exclude=submission.csv
 
 PYTHON  := uv run python
 PIP     := uv pip
