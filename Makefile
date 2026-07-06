@@ -6,7 +6,8 @@ STAGE_DIR  := .kaggle_upload
 # kaggle's CLI has no ignore-file support — it zips everything under -p, so we
 # stage a clean copy first to keep secrets (cred/), .git, and .venv out of the dataset.
 UPLOAD_EXCLUDES := --exclude=.git --exclude=.venv --exclude=cred --exclude=tmp \
-	--exclude=__pycache__ --exclude=.DS_Store --exclude='*.zip' --exclude=$(STAGE_DIR)
+	--exclude=__pycache__ --exclude=.DS_Store --exclude='*.zip' --exclude=$(STAGE_DIR) \
+	--exclude=ndr-trial1.ipynb
 
 PYTHON  := uv run python
 PIP     := uv pip
