@@ -113,36 +113,30 @@ where"), then reports the overlap between the two top-k channel sets:
   `(poison activation − real-detection activation)` instead of poison
   activation alone should sharpen the trade-off seen in step 5.
 
-## 5.55. Flag test images that are themselves poisoned-class ground truth
+## 5.55. (Diagnostic, not currently wired into anything) flag poisoned-class test images
 
 The competition's own aCADD formula scores detections against "the ground
 truth object class (**clean or poisoned streak**)" — meaning the test set
 almost certainly contains poisoned-streak examples too, not just clean ones.
-Any retain/distillation step that treats every sampled test image uniformly
-as "preserve this behavior" risks training the model to keep the backdoor
-active on exactly the images used to check whether it was removed. Run this
-before step 5.6:
 
 ```python
 from approach.detect_poisoned_test_images import scan_test_set
-flagged_ids, real_projections, poison_projections = scan_test_set()
+flagged_ids, real_projections, poison_projections = scan_test_set(n_scan_sample=1500)
 ```
 
-It scores each scanned test image's detection by how closely its channel
-activation pattern resembles the 20 known `unlearn_set` poison examples
-(vs. a robust "typical real" reference), plots the two distributions
-overlaid, and writes flagged image ids to
-`settings.suspected_poison_path` (`/kaggle/working/suspected_poison_test_images.json`
-by default). No ground truth needed — only the poison box locations and the
-model's own predicted boxes.
+**Caveat from a real run:** this flagged 76.8% of scanned images — not
+credible as a real poison ratio, and the plotted distributions overlap
+almost completely. This is consistent with the ~87% channel overlap found
+in step 5.5: a discriminator built from the same overlapping channel space
+doesn't separate the two classes well either. Treat this tool's output with
+skepticism; it is not currently used by `prune_and_finetune.py` or
+`full_pipeline.py`.
 
-## 5.6. (If step 5.5 showed high overlap) prune, then fine-tune to recover
+## 5.6. Prune, then fine-tune with EWC to recover retention
 
 Static pruning can't cleanly separate shared channels, but the network can
 often recover lost capacity if you prune first and then briefly retrain the
-surviving weights of the same layer — the Fine-Pruning paper's two-step
-recipe, which the earlier gradient-based optimizer never did (it only ever
-prunes, never recovers):
+surviving weights of the same layer:
 
 ```python
 from approach.prune_and_finetune import prune_and_finetune
@@ -150,34 +144,68 @@ predictor, handle = prune_and_finetune()
 ```
 
 With no arguments it loads the `(method, k)` from step 5's sweep result
-automatically. It then fine-tunes only `cls_subnet[6]`'s weights (everything
-else stays frozen) with two loss terms:
+automatically, then fine-tunes only `cls_subnet[6]`'s weights (everything
+else stays frozen) with:
 
-- push down detection confidence on the `unlearn_set` (poison) images — the
-  actual unlearning signal
-- keep detection confidence on real test images close to what the
-  *original, unpruned* model produced there — self-distillation, since we
-  have no ground truth for the test images, but the original model's
-  ordinary (non-triggered) behavior is presumably still correct
+```
+loss = unlearn_loss + ewc_lambda * mean((param - anchor) ** 2)
+```
 
-If step 5.55 wrote a `suspected_poison_test_images.json`, its flagged images
-are automatically excluded from the retain sample here.
+`anchor` is the weights **right after pruning** — EWC (Elastic Weight
+Consolidation) keeps training from drifting far from that already-unlearned
+state. This replaced an earlier version that used a *distillation* retain
+loss (match the original unpruned model's output on real test images) —
+that collapsed unlearning almost entirely in a real run (silence 65%→5%),
+because matching the original model's output necessarily restores its
+poison detection too. EWC never pulls toward reproducing the original
+model at all.
 
-It prints a before/after comparison (detect rate + unlearn silence) on the
-same test sample so you can see whether fine-tuning actually recovered
-retention, and saves the resulting weights to
-`settings.finetuned_state_path` (`/kaggle/working/finetuned_cls_subnet6.pth`
-by default).
+`unlearn_silence` is monitored every few epochs (not just before/after) and
+training stops early if it drops below a floor — the raw loss is a smooth
+proxy that can mask a collapse on the actual threshold-based metric, which
+is exactly what let the distillation version's collapse go unnoticed until
+the final check.
 
-## 6. Run the submission script
+Saves the fine-tuned weights to `settings.finetuned_state_path`
+(`/kaggle/working/finetuned_cls_subnet6.pth` by default).
+
+## 6. Run the submission
+
+Two options:
+
+**A — `submit.py`** (uses the pruned channels directly, no fine-tuning):
 
 ```python
 exec(open(f"{CODE_PATH}/kaggle/submit.py").read())
 ```
 
-`submit.py` validates all required paths up front (fails fast with a clear
-message instead of silently writing an empty `submission.csv`), then prints
-a normal-vs-pruned comparison on a test-set sample before running the full
-test set — watch for the collapse warning there too. If step 5 already
-wrote a `best_prune_k.json`, it's used directly (no gradient-based
-optimizer re-run); otherwise it falls back to that optimizer automatically.
+Validates all required paths up front, prints a normal-vs-pruned comparison
+on a test-set sample before running the full test set, uses `best_prune_k.json`
+if present (otherwise falls back to the gradient-based optimizer).
+
+**B — `full_pipeline.py`** (prune + EWC fine-tune + metric-aware post-processing):
+
+```python
+exec(open(f"{CODE_PATH}/kaggle/full_pipeline.py").read())
+```
+
+Runs step 5.6 automatically, then instead of trusting the fine-tuned
+model's raw output, blends two signals per candidate box (from the
+*original* poisoned model at a low 0.05 threshold, for high recall):
+
+- **confidence drop** — how much the fine-tuned model's confidence dropped
+  vs. the original model's, for the same (IoU-matched) box
+- **geometry prior** — a Mahalanobis distance over log(width, height)
+  against the 20 known poison box sizes — does this candidate's box *shape*
+  look like the known poison?
+
+Suspicious boxes are **demoted** to a tiny residual confidence (0.01)
+rather than deleted outright — cheaper under the competition's asymmetric
+scoring than being counted as a missed detection. This is metric-aware
+calibration (tuned to how the scoring formula treats matched-low-confidence
+vs. unmatched detections), not a substitute for genuine de-poisoning — it
+stacks on top of step 5.6's result. Also runs a local sanity check
+(`helpers/macadd.py`, the real competition metric re-implemented) on the 20
+unlearn images using an empty reference before writing the submission —
+not the same number the real leaderboard reports, but a same-direction
+signal that something changed.

@@ -91,7 +91,9 @@ def write_submission(predictions: dict[int, str], out_path: str) -> None:
         writer = csv.writer(f)
         writer.writerow(["id", "image_id", "prediction_string"])
         for row_id, image_id in enumerate(sorted_ids):
-            writer.writerow([row_id, image_id, predictions[image_id]])
+            # competition requires a literal " " for no-detection rows —
+            # an empty string is treated as null by Kaggle's csv parser.
+            writer.writerow([row_id, image_id, predictions[image_id] or " "])
     print(f"Submission written → {out_path}  ({len(sorted_ids)} rows)")
 
 
