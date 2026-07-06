@@ -8,7 +8,6 @@ setup, detectron2 install, and the recommended pre-submission k sweep).
 import json
 import os
 import sys
-import csv
 from pathlib import Path
 
 import torch
@@ -37,6 +36,7 @@ print(f"  TEST_SET_PATH       = {settings.test_set_path}")
 print(f"  CUDA available      = {torch.cuda.is_available()}\n")
 from utils.loader import build_cfg, build_predictor, load_image
 from helpers.diagnostics import sample_images, detection_stats
+from helpers.submission import write_submission
 from approach.optimal_grow_prune import (
     optimal_top_grow_indexes_kmean,
     optimal_top_grow_indexes_kfrequency,
@@ -83,18 +83,6 @@ def predict_all(test_dir: str, prune_indices: list[int]) -> dict[int, str]:
         results[image_id] = " ".join(parts)
 
     return results
-
-
-def write_submission(predictions: dict[int, str], out_path: str) -> None:
-    sorted_ids = sorted(predictions.keys())
-    with open(out_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["id", "image_id", "prediction_string"])
-        for row_id, image_id in enumerate(sorted_ids):
-            # competition requires a literal " " for no-detection rows —
-            # an empty string is treated as null by Kaggle's csv parser.
-            writer.writerow([row_id, image_id, predictions[image_id] or " "])
-    print(f"Submission written → {out_path}  ({len(sorted_ids)} rows)")
 
 
 # ── Step 1: pick prune channels — use the sweep's answer if one exists,

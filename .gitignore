@@ -12,3 +12,5 @@ unlearn_set
 .DS_Store
 
 .kaggle_upload
+
+submission.csv

@@ -16,7 +16,6 @@ sanity-check that de-poisoning had a real effect before spending one of the
 See kaggle/README.md for how to run this on Kaggle (same setup as submit.py).
 """
 
-import csv
 import sys
 from pathlib import Path
 
@@ -39,6 +38,7 @@ except ValueError as exc:
 
 from utils.loader import build_cfg, build_predictor, load_image
 from helpers.macadd import macadd
+from helpers.submission import write_submission
 from approach.optimal_grow_prune import inject_channel_prune_hook
 from approach.prune_and_finetune import prune_and_finetune, _load_grow_indexes_from_sweep
 from approach.postprocess import fit_poison_geometry, demote_predictions, DEFAULT_REMAP
@@ -124,16 +124,9 @@ def run_pipeline():
                 parts.append(f"{score:.6f} {x1:.2f} {y1:.2f} {w:.2f} {h:.2f}")
         predictions[image_id] = " ".join(parts)
 
-    sorted_ids = sorted(predictions.keys())
-    with open(OUTPUT_CSV, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["id", "image_id", "prediction_string"])
-        for row_id, image_id in enumerate(sorted_ids):
-            # competition requires a literal " " for no-detection rows —
-            # an empty string is treated as null by Kaggle's csv parser.
-            writer.writerow([row_id, image_id, predictions[image_id] or " "])
+    write_submission(predictions, OUTPUT_CSV)
     total_boxes = sum(len(p.split()) // 5 for p in predictions.values())
-    print(f"\nSubmission written -> {OUTPUT_CSV} ({len(sorted_ids)} rows, {total_boxes} predictions total)")
+    print(f"({total_boxes} predictions total)")
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     best_k_path: str = "/kaggle/working/best_prune_k.json"
     finetuned_state_path: str = "/kaggle/working/finetuned_cls_subnet6.pth"
     suspected_poison_path: str = "/kaggle/working/suspected_poison_test_images.json"
+    sample_submission_path: str = "sample_submission.csv"
 
     # ---- Model Architecture ----
     base_config: str = "COCO-Detection/retinanet_R_50_FPN_3x.yaml"
@@ -38,6 +39,8 @@ class Settings(BaseSettings):
         paths to exist."""
         if not Path(self.poisoned_model_path).is_file():
             raise ValueError(f"POISONED_MODEL_PATH does not point to a file: {self.poisoned_model_path}")
+        if not Path(self.sample_submission_path).is_file():
+            raise ValueError(f"SAMPLE_SUBMISSION_PATH does not point to a file: {self.sample_submission_path}")
         for name, value in [
             ("UNLEARN_SET_PATH", self.unlearn_set_path),
             ("TEST_SET_PATH", self.test_set_path),
@@ -61,6 +64,7 @@ TEST_SET_PATH        = settings.test_set_path
 BEST_K_PATH          = settings.best_k_path
 FINETUNED_STATE_PATH = settings.finetuned_state_path
 SUSPECTED_POISON_PATH = settings.suspected_poison_path
+SAMPLE_SUBMISSION_PATH = settings.sample_submission_path
 BASE_CONFIG          = settings.base_config
 ANCHOR_ASPECT_RATIOS = settings.anchor_aspect_ratios
 ANCHOR_SIZES         = settings.anchor_sizes
