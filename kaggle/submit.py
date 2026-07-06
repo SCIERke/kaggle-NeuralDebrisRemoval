@@ -48,7 +48,7 @@ from approach.optimal_grow_prune import (
 )
 
 OUTPUT_CSV = "/kaggle/working/submission.csv"
-COMPARISON_SAMPLE_SIZE = 200
+COMPARISON_SAMPLE_SIZE = 500
 MIN_RETENTION = 0.5  # warn if pruned detect_rate drops below this fraction of baseline
 
 

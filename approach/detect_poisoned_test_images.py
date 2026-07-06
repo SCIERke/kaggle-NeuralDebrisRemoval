@@ -12,7 +12,9 @@ risks training the model to keep the backdoor active on exactly the images
 used to score whether it was removed.
 
 This scores each test detection along the direction connecting two known
-reference points in channel-activation space:
+reference points in channel-activation space (each channel standardized by
+its pooled std first, so no channel dominates just from having larger raw
+variance — a diagonal-covariance approximation to LDA):
   - the poison profile: mean per-channel inside/outside score across the
     20 confirmed unlearn_set poison examples (get_score_matrix)
   - a robust "typical real" profile: the per-channel MEDIAN across a large
@@ -54,17 +56,34 @@ N_SCAN_SAMPLE = 500
 FLAG_PERCENTILE = 0.1  # flag test images at least as poison-like as the least-poison-like 90% of known examples
 
 
-def poison_direction(poison_scores: torch.Tensor, real_scores: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Returns (unit direction from typical-real toward poison, robust real reference point)."""
-    poison_mean = torch.mean(poison_scores, dim=0)
-    real_median = torch.median(real_scores, dim=0).values
+def poison_direction(
+    poison_scores: torch.Tensor, real_scores: torch.Tensor, eps: float = 1e-8
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Returns (unit direction in standardized channel space, real reference point in
+    that same space, per-channel std used to standardize).
+
+    Standardizing each channel before taking the mean difference keeps a
+    channel with naturally large variance from dominating the direction just
+    because of its scale — a diagonal-covariance approximation to full LDA
+    (which would need the full 256x256 covariance, unstable to estimate from
+    only 20 poison examples). The std is pooled across both samples, weighted
+    by degrees of freedom, so the much larger real_scores sample dominates
+    the variance estimate rather than the noisy 20-row poison sample."""
+    n_poison, n_real = poison_scores.shape[0], real_scores.shape[0]
+    var_poison = torch.var(poison_scores, dim=0, unbiased=True)
+    var_real = torch.var(real_scores, dim=0, unbiased=True)
+    pooled_var = ((n_poison - 1) * var_poison + (n_real - 1) * var_real) / (n_poison + n_real - 2)
+    std = torch.sqrt(pooled_var + eps)
+
+    poison_mean = torch.mean(poison_scores / std, dim=0)
+    real_median = torch.median(real_scores / std, dim=0).values
     direction = poison_mean - real_median
     direction = direction / direction.norm()
-    return direction, real_median
+    return direction, real_median, std
 
 
-def project(scores: torch.Tensor, direction: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
-    return (scores - reference) @ direction
+def project(scores: torch.Tensor, direction: torch.Tensor, reference: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
+    return (scores / std - reference) @ direction
 
 
 def scan_test_set(n_scan_sample: int = N_SCAN_SAMPLE, flag_percentile: float = FLAG_PERCENTILE):
@@ -80,9 +99,9 @@ def scan_test_set(n_scan_sample: int = N_SCAN_SAMPLE, flag_percentile: float = F
     real_scores, used_paths = real_detection_score_matrix(predictor, model, test_images, return_paths=True)
     print(f"  used {real_scores.shape[0]}/{len(test_images)} sampled test images that had a detection\n")
 
-    direction, reference = poison_direction(poison_scores, real_scores)
-    poison_projections = project(poison_scores, direction, reference)
-    real_projections = project(real_scores, direction, reference)
+    direction, reference, std = poison_direction(poison_scores, real_scores)
+    poison_projections = project(poison_scores, direction, reference, std)
+    real_projections = project(real_scores, direction, reference, std)
 
     threshold = torch.quantile(poison_projections, flag_percentile).item()
     flagged_mask = real_projections >= threshold
