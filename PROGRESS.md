@@ -100,20 +100,41 @@ findings here — kept for history, not for current direction.)*
       robust "typical real" reference; flagged images are auto-excluded from
       `prune_and_finetune.py`'s retain sample. **Built, not yet run on real data.**
 
+- [x] **Ran `scan_test_set()` on real data** — flagged 76.8% of scanned images,
+      not credible as a real poison ratio. Histograms of poison vs. real detections
+      overlap almost completely — consistent with the 87% channel overlap finding.
+      Not wired into either pipeline; treated with skepticism (see
+      `kaggle/README.md` step 5.55).
+- [x] **Adapted a stronger public reference solution's ideas** — replaced the
+      distillation retain loss (which had collapsed unlearn_silence 65%→5% in a
+      real run) with **EWC** (anchor fine-tuning to the post-pruning weights,
+      not the original model's output), added a **local maCADD implementation**
+      (`helpers/macadd.py`), and a **confidence-drop + geometry "demotion"**
+      post-processing layer (`approach/postprocess.py`) instead of trusting the
+      de-poisoned model's raw output. Tied together in `kaggle/full_pipeline.py`.
+- [x] **Fixed a submission-format bug that blocked scoring entirely** —
+      `sample_submission.csv`'s `image_id` column is in lexicographic string
+      order, not numeric; our code assigned `id` by numeric sort, causing most
+      rows to pair with the wrong `image_id` → Kaggle rejected the submission
+      outright ("image_id values not present in the solution"). Fixed by
+      mirroring `sample_submission.csv`'s exact row order (`helpers/submission.py`).
+- [x] **First real submission scored: maCADD ≈ 245, rank 130** (see Daily Log
+      for date). Notably *better* (lower) than the ~250 the reference solution
+      reportedly got, using the EWC + demotion pipeline.
+
 **Not done yet / open:**
 
-- [ ] Run `scan_test_set()` on real Kaggle data — see how many images get flagged,
-      sanity-check the flagged list and the distribution plot look reasonable.
-- [ ] Run `prune_and_finetune()` on real data — check the before/after retention
-      numbers actually improve over prune-only.
 - [ ] Check the competition's **Data** tab (not Rules/Overview) for any explicit
       statement of test_set poison ratio, if given.
 - [ ] Consider folding flagged images into the **unlearn loss** too, not just
       excluding them from retain — bigger potential win (more unlearning signal
       than just the 20 given examples), but riskier if the scanner has false
-      positives (would train the model to suppress real detections).
-- [ ] Submit and get a real maCADD score — nothing has been submitted yet since the
-      original 0-row/collapse bug.
+      positives (would train the model to suppress real detections). Lower
+      priority now that a working submission exists — treat as an optimization,
+      not a blocker.
+- [ ] Tune `full_pipeline.py`'s hyperparameters (`ewc_lambda`, epochs, demotion
+      thresholds in `DEFAULT_REMAP`) against the local maCADD sanity check to
+      try to push the real leaderboard score down further.
 
 ## NEXT STEP (pruning phase — start fresh session, NOT learning mode)
 1. Pick the prune set: threshold on |mean_score| (e.g. |score| > 2.0) or top-k. Start with
@@ -151,4 +172,5 @@ at the bottom every day before you close the laptop. 30 seconds, no excuses.
 |------------|:-----:|:-----------:|-----|------|
 | 2026-06-14 |  🔲   |      —      | Wired accountability system into Momentum | Confirm deadline, lock the stake, install env |
 | 2026-06-16 |  ✅   |      —      | Channel diagnostic done: poison is LOCALIZED (top-10 neg, heatmap stripes) | Prune those channels, validate retain-set, measure maCADD |
+| 2026-07-06 |  ✅   |    245.xxx  | First real submission scored — rank 130, beat the ~250 reference solution | Tune ewc_lambda/demotion thresholds against local maCADD to push score down |
 
